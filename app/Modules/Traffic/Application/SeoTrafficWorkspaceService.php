@@ -75,6 +75,32 @@ final class SeoTrafficWorkspaceService
             'evidence_counts' => $evidenceCounts,
             'actions' => array_values(array_filter(array_keys($actionCounts))),
             'sources' => array_keys($evidenceCounts),
+            'bc_optimization_plan' => $projectKey === 'yby-bottle' ? DB::table('seo_content_backlog')
+                ->where('business_project_id', $project->id)
+                ->where('topic_cluster', 'like', 'BC_Glass_20261015/%')
+                ->orderByRaw("CASE priority WHEN 'P0' THEN 0 WHEN 'P1' THEN 1 ELSE 2 END")
+                ->orderBy('id')
+                ->limit(100)
+                ->get(['id', 'title', 'priority', 'content_type', 'status', 'target_url', 'rationale', 'topic_cluster'])
+                ->map(function (object $row): array {
+                    $rationale = (string) ($row->rationale ?? '');
+                    preg_match('/^\\[BC-YBY-OPT-20261015-V1\\/([A-Za-z0-9-]+)\\]/', $rationale, $code);
+                    preg_match('/Source BC:\\s*(https?:\\/\\/[^\\s\\\\]+)/', $rationale, $source);
+                    preg_match('/Draft V0\\.1[^:]*:\\s*(https?:\\/\\/docs\\.google\\.com\\/document\\/d\\/[A-Za-z0-9_-]+\\/edit)/', $rationale, $draft);
+                    return [
+                        'id' => (int) $row->id,
+                        'code' => $code[1] ?? (string) $row->id,
+                        'priority' => (string) $row->priority,
+                        'status' => (string) $row->status,
+                        'content_type' => (string) $row->content_type,
+                        'title' => (string) $row->title,
+                        'topic_cluster' => (string) $row->topic_cluster,
+                        'source_url' => $source[1] ?? null,
+                        'target_url' => $row->target_url !== null ? (string) $row->target_url : null,
+                        'draft_url' => $draft[1] ?? null,
+                        'details' => $rationale,
+                    ];
+                })->values()->all() : [],
             'keywords' => $this->keywordPaginator($keywords),
             'data_health' => [
                 'seed_loaded' => (clone $base)->exists(),

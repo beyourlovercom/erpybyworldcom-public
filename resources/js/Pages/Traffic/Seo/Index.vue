@@ -77,6 +77,12 @@ type GrowthPayload = {
   international:{ planned:number; top:Array<{work_order_id:number;target_url:string;impressions:number;clicks:number;average_position:number|null;priority_score:number}> }
 }
 
+type BcOptimizationRow = {
+  id:number; code:string; title:string; priority:'P0'|'P1'|'P2'; status:string;
+  content_type:string; topic_cluster:string; source_url:string|null;
+  target_url:string|null; draft_url:string|null; details:string
+}
+
 const props = defineProps<{
   project:{ key:string; name:string }
   filters:{ search:string; action:string; source:string }
@@ -88,6 +94,7 @@ const props = defineProps<{
   keywords:KeywordPaginator
   data_health:{ seed_loaded:boolean; gsc_live_connected:boolean; attribution_state:string }
   growth:GrowthPayload
+  bc_optimization_plan?:BcOptimizationRow[]
 }>()
 
 const filters = reactive({ ...props.filters })
@@ -123,6 +130,12 @@ const priorityCards = computed(() => [
   { key:'PAGE1_P0', label:'原始冲首页', note:'需再次通过 scoped GSC Quality Gate' },
   { key:'TOP3_CTR_P0', label:'原始 Top 3 / CTR', note:'需再次通过 scoped GSC Quality Gate' },
 ])
+const bcPriority = ref<'ALL'|'P0'|'P1'|'P2'>('ALL')
+const bcSearch = ref('')
+const bcRows = computed(() => (props.bc_optimization_plan || []).filter(row =>
+  (bcPriority.value === 'ALL' || row.priority === bcPriority.value) &&
+  (!bcSearch.value.trim() || [row.code,row.title,row.content_type,row.details,row.target_url || ''].join(' ').toLowerCase().includes(bcSearch.value.trim().toLowerCase()))
+))
 const queuePriority = ref<'ALL'|'P0'>('ALL')
 const monitoringState = ref<'ALL'|'monitoring'|'retest_due'>('ALL')
 const filteredGrowthQueue = computed(() => queuePriority.value === 'ALL'
@@ -162,6 +175,46 @@ const filterAction = (action:string) => { filters.action = action; apply() }
       </header>
 
       <TrafficSectionNav :project-key="project.key" />
+
+      <article v-if="bc_optimization_plan?.length" id="bc-glass-plan" class="mvp-card bc-plan">
+        <div class="section-heading">
+          <div><p class="mvp-kicker">YBY BOTTLE / BC GLASS MIGRATION</p><h3>旧站页面优化计划 · {{ integer(bc_optimization_plan.length) }} 项</h3></div>
+          <span>任务记录 · Draft only · 不自动发布 / 不触发 301</span>
+        </div>
+        <div class="bc-plan-stats" aria-label="BC 旧站内容优化任务统计">
+          <div><strong>{{ bc_optimization_plan.length }}</strong><span>全部任务</span></div>
+          <div><strong>{{ bc_optimization_plan.filter(row => row.priority === 'P0').length }}</strong><span>P0 · 优先</span></div>
+          <div><strong>{{ bc_optimization_plan.filter(row => row.priority === 'P1').length }}</strong><span>P1 · 内容</span></div>
+          <div><strong>{{ bc_optimization_plan.filter(row => row.priority === 'P2').length }}</strong><span>P2 · 清理</span></div>
+        </div>
+        <div class="bc-plan-filters">
+          <label>优先级
+            <select v-model="bcPriority" aria-label="筛选 BC 迁移任务优先级">
+              <option value="ALL">全部</option><option value="P0">P0</option><option value="P1">P1</option><option value="P2">P2</option>
+            </select>
+          </label>
+          <label>搜索
+            <input v-model="bcSearch" type="search" placeholder="页面、任务编号或要求" aria-label="搜索 BC 迁移任务" />
+          </label>
+          <span class="bc-plan-total">{{ integer(bcRows.length) }} / {{ integer(bc_optimization_plan.length) }}</span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>优先级 / 状态</th><th>优化项目</th><th>BC 原页面</th><th>YBY 目标页（规划）</th><th>改写草稿</th></tr></thead>
+            <tbody>
+              <tr v-for="row in bcRows" :key="row.id">
+                <td data-label="优先级 / 状态"><span class="priority-badge" :data-priority="row.priority">{{ row.priority }}</span><small>{{ row.status }}</small></td>
+                <td data-label="优化项目"><strong>{{ row.title }}</strong><small>{{ row.code }} · {{ row.content_type }}</small><details class="bc-plan-details"><summary>查看任务要求及验收门禁</summary><p>{{ row.details }}</p></details></td>
+                <td data-label="BC 原页面"><a v-if="row.source_url" :href="row.source_url" target="_blank" rel="noopener noreferrer">原页面 ↗</a><span v-else>无原页面</span></td>
+                <td data-label="YBY 目标页（规划）"><span v-if="row.target_url">{{ shortUrl(row.target_url) }}</span><span v-else>审核停用/合并，无目标页</span></td>
+                <td data-label="改写草稿"><a v-if="row.draft_url" :href="row.draft_url" target="_blank" rel="noopener noreferrer">Google Docs V0.1 ↗</a><span v-else>待起草 / 审核</span></td>
+              </tr>
+              <tr v-if="!bcRows.length"><td colspan="5" class="empty-cell">当前筛选无任务。</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="bc-plan-disclaimer">SEO / Content 规划记录不等于线上页面已建立。政策页、主体事实、广告数据与 BC → YBY 301 均须单独审核和发布授权。</p>
+      </article>
 
       <div class="growth-kpi-grid">
         <button
@@ -333,4 +386,34 @@ const filterAction = (action:string) => { filters.action = action; apply() }
 
 <style scoped>
 .seo-workspace{display:grid;gap:14px;min-width:0;max-width:100%;overflow-x:hidden}.seo-workspace>*{min-width:0;max-width:100%;box-sizing:border-box}.workspace-heading,.section-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:20px;min-width:0}.workspace-heading>*,.section-heading>*{min-width:0}.workspace-heading h2,.section-heading h3,.growth-scope h3{margin:2px 0 6px}.workspace-heading p,.growth-scope p{margin:0;color:#64748b}.growth-kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;min-width:0;width:100%}.growth-kpi{display:grid;gap:6px;min-width:0;width:100%;box-sizing:border-box;padding:15px;border:1px solid #dbe4ec;border-radius:12px;background:#fff;text-align:left;font:inherit;color:inherit;cursor:pointer;transition:border-color .16s ease,box-shadow .16s ease,transform .16s ease}.growth-kpi:hover,.growth-kpi:focus-visible{border-color:#0f766e;box-shadow:0 8px 20px rgba(15,118,110,.10);transform:translateY(-1px);outline:none}.growth-kpi[data-tone="strong"]{border-top:3px solid #0f766e}.growth-kpi[data-tone="warn"]{border-top:3px solid #b45309}.growth-kpi span,.growth-kpi small{color:#64748b;font-size:11px}.growth-kpi strong{font-size:27px;font-variant-numeric:tabular-nums}.growth-scope{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,2fr);gap:18px;align-items:start;min-width:0}.growth-scope dl{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:0;min-width:0}.growth-scope dl>div{display:grid;gap:3px;padding:10px;border:1px solid #e2e8f0;border-radius:10px;background:#f8fafc}.growth-scope dt,.growth-scope small{color:#64748b;font-size:11px}.growth-scope dd{margin:0;font-weight:800}.scope-hosts{grid-column:1/-1;display:flex;gap:7px;flex-wrap:wrap}.scope-hosts span{padding:5px 8px;border:1px solid #cbd5e1;border-radius:999px;background:#fff;color:#475569;font-size:11px}.jump-target{scroll-margin-top:88px}.isolated-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:12px}.isolated-grid section{display:grid;gap:7px;padding:15px;border:1px solid #e2e8f0;border-radius:12px;background:#f8fafc}.isolated-grid section>span,.isolated-grid p,.isolated-grid small{color:#64748b}.isolated-grid section>strong{font-size:28px}.isolated-grid p{margin:0;line-height:1.55}.isolated-grid .mvp-button{justify-self:start}.compact-table{margin-top:12px}.monitoring-summary{display:flex;gap:10px;flex-wrap:wrap;margin:10px 0}.monitoring-summary span{padding:7px 10px;border-radius:999px;background:#f1f5f9;color:#475569;font-size:11px}.monitoring-summary strong{margin-left:4px}.priority-badge,.state-badge{display:inline-flex;align-items:center;padding:4px 8px;border-radius:999px;background:#f1f5f9;font-weight:800;font-size:11px}.priority-badge[data-priority="P0"]{background:#ecfdf5;color:#047857}.priority-badge[data-priority="P1"]{background:#eff6ff;color:#1d4ed8}.state-badge[data-state="retest_due"],.state-badge[data-state="loser"]{background:#fff7ed;color:#c2410c}.state-badge[data-state="winner"]{background:#ecfdf5;color:#047857}.url-cell{max-width:300px;overflow:hidden}.url-cell span{display:block;max-width:300px;overflow:hidden;text-overflow:ellipsis}.kpi-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}.kpi{display:grid;gap:7px;padding:16px;border:1px solid #dbe4ec;border-radius:12px;background:#fff}.kpi span,.kpi small{color:#64748b;font-size:12px}.kpi strong{font-size:28px;font-variant-numeric:tabular-nums}.opportunity-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.opportunity-card{display:grid;gap:7px;text-align:left;padding:16px;border:1px solid #dbe4ec;border-radius:12px;background:#fff;cursor:pointer}.opportunity-card:hover{border-color:#0f766e}.opportunity-card span,.opportunity-card small{color:#64748b}.opportunity-card strong{font-size:30px}.source-strip{display:flex;justify-content:space-between;align-items:center;gap:20px;min-width:0}.source-strip>div{display:grid;gap:4px;min-width:0}.source-strip small{color:#64748b}.source-strip dl{display:flex;gap:20px;margin:0;flex-wrap:wrap;min-width:0}.source-strip dl>div{display:grid;gap:2px}.source-strip dt{color:#64748b;font-size:11px}.source-strip dd{margin:0;font-weight:700}.filters{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr) minmax(0,1fr) auto;align-items:end;gap:10px;min-width:0}.filters label{display:grid;gap:5px;min-width:0;color:#64748b;font-size:12px}.filters input,.filters select{min-width:0;width:100%;box-sizing:border-box;min-height:38px;border:1px solid #cbd5e1;border-radius:8px;padding:7px 10px;background:#fff}.filter-actions{display:flex;gap:8px}.table-wrap{display:block;min-width:0;max-width:100%;width:100%;overflow-x:auto;overscroll-behavior-inline:contain;-webkit-overflow-scrolling:touch}table{width:100%;min-width:max-content;border-collapse:collapse;font-size:12px}th,td{padding:10px 8px;border-bottom:1px solid #e2e8f0;text-align:left;vertical-align:top;white-space:nowrap}th{color:#64748b}td{color:#334155}td strong,td small{display:block}td small{margin-top:3px;color:#94a3b8}.action-badge{display:inline-block;padding:4px 7px;border-radius:999px;background:#f1f5f9}.action-badge[data-priority="p0"]{background:#ecfdf5;color:#047857;font-weight:700}.pagination{display:flex;justify-content:space-between;align-items:center;margin-top:12px;color:#64748b;font-size:12px}.health-note p{margin:6px 0 0;color:#64748b}.empty-cell{text-align:center;color:#94a3b8}@media(max-width:1280px){.growth-kpi-grid{grid-template-columns:repeat(3,1fr)}.growth-scope{grid-template-columns:1fr}.growth-scope dl{grid-template-columns:repeat(2,1fr)}}@media(max-width:1100px){.kpi-grid{grid-template-columns:repeat(2,1fr)}.filters{grid-template-columns:1fr 1fr}}@media(max-width:720px){.workspace-heading,.source-strip{flex-direction:column}.growth-kpi-grid,.kpi-grid,.opportunity-grid,.filters,.growth-scope dl,.isolated-grid{grid-template-columns:1fr}.growth-kpi{grid-template-columns:1fr auto;align-items:center}.growth-kpi small{grid-column:1/-1}.growth-kpi strong{font-size:24px}.scope-hosts{display:none}.table-wrap{margin-inline:-14px;padding-inline:14px}.monitoring-summary{display:grid;grid-template-columns:repeat(2,1fr)}}
+.bc-plan{margin-bottom:16px}.bc-plan-filters{display:flex;gap:14px;align-items:end;flex-wrap:wrap;margin:12px 0}.bc-plan-filters label{display:flex;flex-direction:column;gap:5px;color:#334155;font-size:12px}.bc-plan-filters :is(select,input){border:1px solid #cbd5e1;border-radius:9px;padding:9px 12px;background:#fff;color:#111827;min-width:170px}.bc-plan-total{font-size:12px;color:#64748b}.bc-plan-details{margin-top:7px;max-width:340px;white-space:normal}.bc-plan-details summary{cursor:pointer;color:#334155;text-decoration:underline;font-size:12px}.bc-plan-details p{white-space:pre-line;line-height:1.5;color:#475569}.bc-plan-disclaimer{font-size:12px;color:#64748b;line-height:1.5;margin-top:12px}
+/* Mobile-first operations: cards, not a sideways-scrolling five-column table. */
+.bc-plan-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:14px 0}
+.bc-plan-stats>div{display:flex;flex-direction:column;gap:4px;align-items:center;border:1px solid #d9e5df;background:#f7faf8;border-radius:11px;padding:12px 4px}
+.bc-plan-stats strong{color:#15533e;font-weight:750;font-size:23px;line-height:1.2}
+.bc-plan-stats span{color:#52685f;font-size:11px}
+.bc-plan a{color:#116d50;text-decoration:underline}
+.bc-plan :is(a,summary,select,input){touch-action:manipulation}
+@media(max-width:720px){
+  .bc-plan-stats{gap:6px;grid-template-columns:repeat(4,minmax(0,1fr))}
+  .bc-plan-stats>div{padding:10px 2px}
+  .bc-plan-stats strong{font-size:20px}
+  .bc-plan-stats span{font-size:10px}
+  .bc-plan .table-wrap{overflow:visible;max-width:100%;margin:0;padding:0}
+  .bc-plan table{display:block;min-width:0;width:100%;border-collapse:separate}
+  .bc-plan thead{display:none}
+  .bc-plan tbody{display:grid;gap:11px}
+  .bc-plan tbody tr{display:block;min-width:0;border:1px solid #dfe8e2;background:#fff;border-radius:11px;padding:10px 13px;box-shadow:0 2px 5px #1c393009}
+  .bc-plan tbody td{display:block;white-space:normal;min-width:0;padding:6px 0;border-bottom:0;overflow-wrap:anywhere}
+  .bc-plan tbody td::before{content:attr(data-label);display:block;font-size:10px;color:#71817a;letter-spacing:.025em;margin-bottom:5px;font-weight:650}
+  .bc-plan tbody td:first-child{display:flex;align-items:center;gap:7px;padding-bottom:2px}
+  .bc-plan tbody td:first-child::before{margin-bottom:0;margin-right:3px}
+  .bc-plan tbody td:first-child small{margin:0}
+  .bc-plan tbody td:nth-child(2) strong{font-size:14px}
+  .bc-plan tbody td:nth-child(3),.bc-plan tbody td:nth-child(4){font-size:12px}
+  .bc-plan .bc-plan-details{max-width:100%;min-width:0}
+  .bc-plan .bc-plan-details p{max-height:185px;overflow-y:auto;font-size:12px}
+  .bc-plan tbody td.empty-cell{display:block;text-align:center}
+}
+@media(max-width:720px){.bc-plan-filters{align-items:stretch}.bc-plan-filters label{width:100%}.bc-plan-filters :is(select,input){width:100%}.bc-plan-details{min-width:180px}}
 </style>
