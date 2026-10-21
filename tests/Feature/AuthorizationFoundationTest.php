@@ -54,12 +54,12 @@ class AuthorizationFoundationTest extends TestCase
         $this->artisan('erp:user:create')
             ->expectsQuestion('Name', 'Owner')
             ->expectsQuestion('Email', 'owner@example.test')
-            ->expectsQuestion('Password', 'a-strong-password-123')
-            ->expectsQuestion('Confirm password', 'a-strong-password-123')
+            ->expectsQuestion('Password', 'StrongTest123!')
+            ->expectsQuestion('Confirm password', 'StrongTest123!')
             ->expectsChoice('Role', RolePreset::Administrator->value, $choices)
             ->assertExitCode(0);
         $this->assertDatabaseHas('users', ['email' => 'owner@example.test']);
-        $this->assertDatabaseMissing('audit_records', ['after->password' => 'a-strong-password-123']);
+        $this->assertDatabaseMissing('audit_records', ['after->password' => 'StrongTest123!']);
     }
 
     public function test_application_auth_surfaces_have_no_public_registration_entry(): void
